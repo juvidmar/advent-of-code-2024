@@ -1,65 +1,100 @@
-def read_map(filename):
-    """Reads the map from input.txt and returns it as a list of lists."""
-    with open(filename, "r") as file:
-        return [list(line.strip()) for line in file.readlines()]
-
-def find_guard_position_and_direction(lab_map):
-    """Finds the initial position and direction of the guard."""
-    directions = {"^": (0, -1), ">": (1, 0), "v": (0, 1), "<": (-1, 0)}
-    for y, row in enumerate(lab_map):
-        for x, cell in enumerate(row):
-            if cell in directions:
-                return (x, y), directions[cell]
-    raise ValueError("Guard not found on the map.")
-
 def turn_right(direction):
-    """Turns the direction 90 degrees to the right."""
-    right_turns = {
-        (0, -1): (1, 0),  # Up to Right
-        (1, 0): (0, 1),   # Right to Down
-        (0, 1): (-1, 0),  # Down to Left
-        (-1, 0): (0, -1)  # Left to Up
-    }
-    return right_turns[direction]
+    # directions are (dr, dc)
+    directions = [(-1, 0), (0, 1), (1, 0), (0, -1)]
+    i = directions.index(direction)
+    return directions[(i + 1) % 4]
 
-def simulate_patrol(lab_map):
-    """Simulates the guard's patrol and returns the number of distinct visited positions."""
-    width, height = len(lab_map[0]), len(lab_map)
-    visited = set()
+def read_map(filename):
+    with open(filename, 'r') as f:
+        grid = [list(line.rstrip('\n')) for line in f]
+    return grid
 
-    # Find initial guard position and direction
-    guard_pos, direction = find_guard_position_and_direction(lab_map)
-    visited.add(guard_pos)
+def find_guard(grid):
+    # Find guard symbol and direction
+    dir_map = {'^': (-1, 0), '>': (0, 1), 'v': (1, 0), '<': (0, -1)}
+    for r in range(len(grid)):
+        for c in range(len(grid[0])):
+            if grid[r][c] in dir_map:
+                return (r, c, dir_map[grid[r][c]])
+    return None
+
+def is_inside(grid, r, c):
+    return 0 <= r < len(grid) and 0 <= c < len(grid[0])
+
+def simulate(grid, extra_obstacle=None):
+    # Find the guard initial position and direction
+    start_r, start_c, direction = find_guard(grid)
+    # Replace the guard symbol with '.' to simulate movement
+    grid[start_r][start_c] = '.'
+
+    # Set initial state
+    r, c = start_r, start_c
+    visited_states = set()
+    state = (r, c, direction)
+    visited_states.add(state)
 
     while True:
-        x, y = guard_pos
-        dx, dy = direction
-        next_pos = (x + dx, y + dy)
+        # Next cell in front
+        fr, fc = r + direction[0], c + direction[1]
 
-        # Check if the guard will leave the map
-        if not (0 <= next_pos[0] < width and 0 <= next_pos[1] < height):
-            break
+        # Check if out of bounds => guard leaves map
+        if not is_inside(grid, fr, fc):
+            # Guard leaves the map
+            return 'exit'
 
-        # Check if the next position is an obstacle
-        if lab_map[next_pos[1]][next_pos[0]] == "#":
-            # Turn right
+        # Within bounds, check if blocked
+        if (fr, fc) == extra_obstacle:
+            # This cell is blocked because we placed a new obstruction here
+            blocked = True
+        else:
+            cell = grid[fr][fc]
+            # '#' is an obstacle
+            # '.' is free
+            # We have already replaced the guard symbol, so no '^','v','<','>' in the grid now
+            blocked = (cell == '#')
+
+        if blocked:
+            # turn right if blocked
             direction = turn_right(direction)
         else:
-            # Move forward
-            guard_pos = next_pos
-            visited.add(guard_pos)
+            # move forward
+            r, c = fr, fc
 
-    return len(visited)
+        state = (r, c, direction)
+        if state in visited_states:
+            # Loop detected
+            return 'loop'
+        visited_states.add(state)
 
-def solve():
-    # Read the lab map from input.txt
-    lab_map = read_map("input.txt")
+def main():
+    grid = read_map("input.txt")
 
-    # Simulate the guard's patrol
-    result = simulate_patrol(lab_map)
+    start_r, start_c, start_dir = find_guard(grid)
 
-    # Print the result
-    print(f"Number of distinct positions visited: {result}")
+    # For part two:
+    # We want to know how many positions (currently '.') can become an obstruction to cause a loop.
+    loop_count = 0
+    rows = len(grid)
+    cols = len(grid[0])
+
+    # We'll copy the grid for each test since we modify it by replacing the guard symbol
+    from copy import deepcopy
+
+    # Find guard and direction once (for resetting between attempts)
+    original_grid = deepcopy(grid)
+    sr, sc, sdir = find_guard(original_grid)
+
+    for r in range(rows):
+        for c in range(cols):
+            if (r, c) != (sr, sc) and original_grid[r][c] == '.':
+                # Try placing an obstacle here
+                # Make a fresh copy and simulate
+                test_grid = deepcopy(original_grid)
+                result = simulate(test_grid, extra_obstacle=(r, c))
+                if result == 'loop':
+                    loop_count += 1
+
+    print(loop_count)
 
 if __name__ == "__main__":
-    solve()
+    main()
